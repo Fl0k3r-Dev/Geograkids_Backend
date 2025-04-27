@@ -8,3 +8,4 @@ class LivrosVida(Base):
     titulo = Column(String(100), index=True)
     descricao = Column(String(100), unique=True, index=True)
     pdf = Column(String(100), unique=True, index=True)
+    caminhoPdf = Column(String(100), unique=True, index=True)

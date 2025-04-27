@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException
+import os
+from fastapi import FastAPI, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.crud.usuario import crud_usuario
@@ -24,18 +25,22 @@ from app.schemas.livro_vida import LivroVidaSchema
 from app.schemas.fichas_atividades import FichasAtividadesSchema
 from app.schemas.fichas_conteudos import FichasConteudosSchema
 from app.schemas.cartografias import CartografiasSchema
+from typing import Optional
+from fastapi import File, UploadFile
 
-
+import sys
+sys.path.insert(0, '/home/geografando1/public_html/meus_pacotes')
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1", "http://localhost"],
+    allow_origins=["*"],  # Pode definir origens específicas, se necessário, ex: ["http://127.0.0.1"]
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Permite todos os métodos HTTP (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],  # Permite todos os cabeçalhos
 )
+
 @app.post("/usuario/")
 def criar_usuario(usuario: UsuarioSchema, db: Session = Depends(get_db)):
     return crud_usuario.create(db, usuario)
@@ -77,34 +82,113 @@ def atualizar_referencias(referencia_id: int, referencia: ReferenciaSchema, db: 
 def deletar_referencias(referencia_id: int, db: Session = Depends(get_db)):
     return crud_referencia.delete(db, referencia_id)
 
-
-
 @app.post("/livros/")
-def criar_livros(livros: LivroSchema, db: Session = Depends(get_db)):
-    return crud_livros_vida.create(db, livros)
+def criar_livros(
+    titulo: str = Form(...),
+    autor: str = Form(...),
+    descricao: str = Form(...),
+    pdf: UploadFile = File(None),
+    db: Session = Depends(get_db)
+):
+    caminho_pdf = None
+    if pdf:
+        caminho_pdf = f"uploads/livros/{pdf.filename}"
+        os.makedirs(os.path.dirname(caminho_pdf), exist_ok=True)
+        with open(caminho_pdf, "wb") as f:
+            f.write(pdf.file.read())
+
+    livro_data = LivroSchema(
+        titulo = titulo,
+        autor = autor,
+        descricao = descricao,
+        pdf = pdf.filename,
+        caminhoPdf= caminho_pdf
+    )
+
+    return crud_livro.create(db, livro_data)
 
 @app.get("/livros/")
 def listar_livros(db: Session = Depends(get_db)):
-    return crud_livros_vida.get_all(db)
+    return crud_livro.get_all(db)
 
 @app.get("/livros/{livro_id}")
 def obter_livros(livro_id: int, db: Session = Depends(get_db)):
-    return crud_livros_vida.get(db, livro_id)
+    return crud_livro.get(db, livro_id)
 
 @app.put("/livros/{livro_id}")
-def atualizar_livros(livro_id: int, livro: LivroSchema, db: Session = Depends(get_db)):
-    return crud_livros_vida.update(db, livro_id, livro)
+def atualizar_livros(
+    livro_id: int,
+    titulo: str = Form(...),
+    autor: str = Form(...),
+    descricao: str = Form(...),
+    pdf: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    
+    livro = crud_livro.get(db, livro_id)
+
+    if livro and livro.pdf:
+        caminho_arquivo = livro.caminhoPdf
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
+    caminho_pdf = None
+    if pdf:
+        caminho_pdf = f"uploads/livros/{pdf.filename}-{titulo}"
+        os.makedirs(os.path.dirname(caminho_pdf), exist_ok=True)
+        with open(caminho_pdf, "wb") as f:
+            f.write(pdf.file.read())
+
+    livro_data = LivroSchema(
+        titulo=titulo,
+        autor=autor,
+        descricao=descricao,
+        pdf=pdf.filename,
+        caminhoPdf=caminho_pdf
+    )
+
+    return crud_livro.update(db, livro_id, livro_data)
 
 @app.delete("/livros/{livro_id}")
 def deletar_livros(livro_id: int, db: Session = Depends(get_db)):
-    return crud_livros_vida.delete(db, livro_id)
+    livro = crud_livro.get(db, livro_id)
 
+    if livro and livro.pdf:
+        caminho_arquivo = livro.caminhoPdf
+
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
+    return crud_livro.delete(db, livro_id)
 
 
 
 @app.post("/fotos/")
-def criar_fotos(fotos: FotoSchema, db: Session = Depends(get_db)):
-    return crud_foto.create(db, fotos)
+def criar_fotos(
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    imagem: UploadFile = File(None),
+    db: Session = Depends(get_db)
+):
+    caminho_imagem = None
+
+    if imagem:
+        caminho_imagem = f"uploads/fotos/{imagem.filename}-{titulo}"
+        
+        os.makedirs(os.path.dirname(caminho_imagem), exist_ok=True)
+        
+        with open(caminho_imagem, "wb") as f:
+            f.write(imagem.file.read())
+
+    foto_data = FotoSchema(
+        titulo=titulo,
+        descricao=descricao,
+        imagem= imagem.filename,
+        caminhoImagem=caminho_imagem
+    )
+
+    return crud_foto.create(db, foto_data)
+
 
 @app.get("/fotos/")
 def listar_fotos(db: Session = Depends(get_db)):
@@ -115,17 +199,72 @@ def obter_fotos(foto_id: int, db: Session = Depends(get_db)):
     return crud_foto.get(db, foto_id)
 
 @app.put("/fotos/{foto_id}")
-def atualizar_fotos(foto_id: int, foto: FotoSchema, db: Session = Depends(get_db)):
-    return crud_foto.update(db, foto_id, foto)
+def atualizar_fotos(
+    foto_id: int,
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    imagem: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    
+    foto = crud_foto.get(db, foto_id)
+
+    if foto and foto.imagem:
+        caminho_arquivo = foto.caminhoImagem
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
+    caminho_imagem = None
+    if imagem:
+        caminho_imagem = f"uploads/fotos/{imagem.filename}-{titulo}"
+        os.makedirs(os.path.dirname(caminho_imagem), exist_ok=True)
+        with open(caminho_imagem, "wb") as f:
+            f.write(imagem.file.read())
+
+    foto_data = FotoSchema(
+        titulo=titulo,
+        descricao=descricao,
+        imagem=imagem.filename,
+        caminhoImagem=caminho_imagem
+    )
+
+    return crud_foto.update(db, foto_id, foto_data)
+
 
 @app.delete("/fotos/{foto_id}")
 def deletar_fotos(foto_id: int, db: Session = Depends(get_db)):
+    arquivo = crud_foto.get(db, foto_id)
+
+    if arquivo and arquivo.imagem:
+        caminho_arquivo = arquivo.caminhoImagem
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
     return crud_foto.delete(db, foto_id)
 
 
 @app.post("/livrosvida/")
-def criar_livros_vida(item: LivroVidaSchema, db: Session = Depends(get_db)):
-    return crud_livros_vida.create(db, item)
+def criar_livro_vida(
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    pdf: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    caminho_pdf = f"uploads/livrosvida/{pdf.filename}-{titulo}"
+    
+    os.makedirs(os.path.dirname(caminho_pdf), exist_ok=True)
+    
+    with open(caminho_pdf, "wb") as f:
+        f.write(pdf.file.read())
+
+    livro_vida_data = LivroVidaSchema(
+        titulo=titulo,
+        descricao=descricao,
+        pdf=pdf.filename,
+        caminhoPdf=caminho_pdf
+    )
+
+    return crud_livros_vida.create(db, livro_vida_data)
 
 @app.get("/livrosvida/")
 def listar_livros_vida(db: Session = Depends(get_db)):
@@ -135,19 +274,68 @@ def listar_livros_vida(db: Session = Depends(get_db)):
 def obter_livros_vida(item_id: int, db: Session = Depends(get_db)):
     return crud_livros_vida.get(db, item_id)
 
-@app.put("/livrosvida/{item_id}")
-def atualizar_livros_vida(item_id: int, item: LivroVidaSchema, db: Session = Depends(get_db)):
-    return crud_livros_vida.update(db, item_id, item)
+@app.put("/livrosvida/{livro_id}")
+def atualizar_livros_vida(
+    livro_id: int,
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    pdf: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    caminho_pdf = None
+    if pdf:
+        caminho_pdf = f"uploads/livrosvida/{pdf.filename}-{titulo}"
+        os.makedirs(os.path.dirname(caminho_pdf), exist_ok=True)
+        with open(caminho_pdf, "wb") as f:
+            f.write(pdf.file.read())
+
+    livro_vida_data = LivroVidaSchema(
+        titulo=titulo,
+        descricao=descricao,
+        pdf=pdf.filename,
+        caminhoPdf=caminho_pdf
+    )
+
+    return crud_livros_vida.update(db, livro_id, livro_vida_data)
 
 @app.delete("/livrosvida/{item_id}")
 def deletar_livros_vida(item_id: int, db: Session = Depends(get_db)):
+
+    arquivo = crud_livros_vida.get(db, item_id)
+
+    if arquivo and arquivo.pdf:
+        caminho_arquivo = arquivo.caminhoPdf
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
     return crud_livros_vida.delete(db, item_id)
 
 
 # VIDEOS
+
 @app.post("/videos/")
-def criar_videos(video: VideosSchema, db: Session = Depends(get_db)):
-    return crud_video.create(db, video)
+def criar_videos(
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    video: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    caminho_video = f"uploads/videos/{video.filename}-{titulo}"
+    
+    os.makedirs(os.path.dirname(caminho_video), exist_ok=True)
+    
+    with open(caminho_video, "wb") as f:
+        f.write(video.file.read())
+
+    video_data = VideosSchema(
+        titulo=titulo,
+        descricao=descricao,
+        video=video.filename,
+        caminhoVideo=caminho_video
+    )
+
+    return crud_video.create(db, video_data)
+
 
 @app.get("/videos/")
 def listar_videos(db: Session = Depends(get_db)):
@@ -157,21 +345,109 @@ def listar_videos(db: Session = Depends(get_db)):
 def obter_videos(video_id: int, db: Session = Depends(get_db)):
     return crud_video.get(db, video_id)
 
+
 @app.put("/videos/{video_id}")
-def atualizar_videos(video_id: int, video: VideosSchema, db: Session = Depends(get_db)):
-    return crud_video.update(db, video_id, video)
+def atualizar_videos(
+    video_id: int,
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    video: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    videoObj = crud_video.get(db, video_id)
+
+    if video and videoObj.video:
+        caminho_arquivo = videoObj.caminhoVideo
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
+    caminho_video = None
+    if video:
+        caminho_video = f"uploads/videos/{video.filename}-{titulo}"
+        os.makedirs(os.path.dirname(caminho_video), exist_ok=True)
+        with open(caminho_video, "wb") as f:
+            f.write(video.file.read())
+
+    video_data = VideosSchema(
+        titulo=titulo,
+        descricao=descricao,
+        video=video.filename,
+        caminhoVideo=caminho_video
+    )
+
+    return crud_video.update(db, video_id, video_data)
+
 
 @app.delete("/videos/{video_id}")
 def deletar_videos(video_id: int, db: Session = Depends(get_db)):
+     
+    arquivo = crud_video.get(db, video_id)
+
+    if arquivo and arquivo.video:
+        caminho_arquivo = arquivo.caminhoVideo
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
     return crud_video.delete(db, video_id)
 
 
 # FICHA ATIVIDADE
-@app.post("/fichasatividades/")
-def criar_ficha_atividade(item: FichasAtividadesSchema, db: Session = Depends(get_db)):
-    return crud_ficha_atividade.create(db, item)
 
-@app.get("/fichasatividades/")
+@app.post("/fichasatividades")
+def criar_ficha_atividade(
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    pdf: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    caminho_arquivo = None
+    if pdf:
+        caminho_arquivo = f"uploads/fichasatividades/{titulo}_{pdf.filename}"
+        os.makedirs(os.path.dirname(caminho_arquivo), exist_ok=True)
+        with open(caminho_arquivo, "wb") as f:
+            f.write(pdf.file.read())
+
+    ficha_data = FichasAtividadesSchema(
+        titulo=titulo,
+        descricao=descricao,
+        pdf=pdf.filename,
+        caminhoPdf=caminho_arquivo
+    )
+
+    return crud_ficha_atividade.create(db, ficha_data)
+
+@app.put("/fichasatividades/{ficha_id}")
+def atualizar_ficha_atividade(
+    ficha_id: int,
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    pdf: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    
+    arquivoObj = crud_ficha_atividade.get(db, ficha_id)
+
+    if pdf and arquivoObj.pdf:
+        caminho_arquivo = arquivoObj.caminhoPdf
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
+    caminho_arquivo = None
+    if pdf:
+        caminho_arquivo = f"uploads/fichasatividades/{pdf.filename}-{titulo}"
+        os.makedirs(os.path.dirname(caminho_arquivo), exist_ok=True)
+        with open(caminho_arquivo, "wb") as f:
+            f.write(pdf.file.read())
+
+    ficha_data = FichasAtividadesSchema(
+        titulo=titulo,
+        descricao=descricao,
+        pdf=pdf.filename,
+        caminhoPdf=caminho_arquivo
+    )
+
+    return crud_ficha_atividade.update(db, ficha_id, ficha_data)
+
+@app.get("/fichasatividades")
 def listar_ficha_atividade(db: Session = Depends(get_db)):
     return crud_ficha_atividade.get_all(db)
 
@@ -179,21 +455,45 @@ def listar_ficha_atividade(db: Session = Depends(get_db)):
 def obter_ficha_atividade(item_id: int, db: Session = Depends(get_db)):
     return crud_ficha_atividade.get(db, item_id)
 
-@app.put("/fichasatividades/{item_id}")
-def atualizar_ficha_atividade(item_id: int, item: FichasAtividadesSchema, db: Session = Depends(get_db)):
-    return crud_ficha_atividade.update(db, item_id, item)
-
 @app.delete("/fichasatividades/{item_id}")
 def deletar_ficha_atividade(item_id: int, db: Session = Depends(get_db)):
+
+    arquivo = crud_ficha_atividade.get(db, item_id)
+
+    if arquivo and arquivo.pdf:
+        caminho_arquivo = arquivo.caminhoPdf
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
     return crud_ficha_atividade.delete(db, item_id)
 
 
 # FICHA CONTEÚDO
-@app.post("/fichasconteudos/")
-def criar_ficha_conteudo(item: FichasConteudosSchema, db: Session = Depends(get_db)):
-    return crud_ficha_conteudo.create(db, item)
 
-@app.get("/fichasconteudos/")
+@app.post("/fichasconteudos")
+def criar_ficha_conteudo(
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    pdf: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    caminho_arquivo = f"uploads/fichasconteudos/{pdf.filename}-{titulo}"
+    
+    os.makedirs(os.path.dirname(caminho_arquivo), exist_ok=True)
+    
+    with open(caminho_arquivo, "wb") as f:
+        f.write(pdf.file.read())
+
+    ficha_data = FichasConteudosSchema(
+        titulo=titulo,
+        descricao=descricao,
+        pdf=pdf.filename,
+        caminhoPdf=caminho_arquivo
+    )
+
+    return crud_ficha_conteudo.create(db, ficha_data)
+
+@app.get("/fichasconteudos")
 def listar_ficha_conteudo(db: Session = Depends(get_db)):
     return crud_ficha_conteudo.get_all(db)
 
@@ -201,12 +501,47 @@ def listar_ficha_conteudo(db: Session = Depends(get_db)):
 def obter_ficha_conteudo(item_id: int, db: Session = Depends(get_db)):
     return crud_ficha_conteudo.get(db, item_id)
 
-@app.put("/fichasconteudos/{item_id}")
-def atualizar_ficha_conteudo(item_id: int, item: FichasConteudosSchema, db: Session = Depends(get_db)):
-    return crud_ficha_conteudo.update(db, item_id, item)
+@app.put("/fichasconteudos/{ficha_id}")
+def atualizar_fichas_conteudos(
+    ficha_id: int, 
+    titulo: str,
+    descricao: str, 
+    pdf: Optional[UploadFile] = None,
+    db: Session = Depends(get_db)
+):
+    arquivoObj = crud_ficha_conteudo.get(db, ficha_id)
+
+    if pdf and arquivoObj.pdf:
+        caminho_arquivo = arquivoObj.caminhoPdf
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
+    caminho_arquivo = None
+    if pdf:
+        caminho_arquivo = f"uploads/fichasconteudos/{pdf.filename}-{titulo}"
+        os.makedirs(os.path.dirname(caminho_arquivo), exist_ok=True)
+        with open(caminho_arquivo, "wb") as f:
+            f.write(pdf.file.read())
+
+    ficha_data = FichasConteudosSchema(
+        titulo=titulo,
+        descricao=descricao,
+        pdf=pdf.filename,
+        caminhoPdf=caminho_arquivo
+    )
+
+    return crud_ficha_conteudo.update(db, ficha_id, ficha_data)
 
 @app.delete("/fichasconteudos/{item_id}")
 def deletar_ficha_conteudo(item_id: int, db: Session = Depends(get_db)):
+
+    arquivo = crud_ficha_conteudo.get(db, item_id)
+
+    if arquivo and arquivo.pdf:
+        caminho_arquivo = arquivo.caminhoPdf
+        if os.path.exists(caminho_arquivo):
+            os.remove(caminho_arquivo)
+
     return crud_ficha_conteudo.delete(db, item_id)
 
 

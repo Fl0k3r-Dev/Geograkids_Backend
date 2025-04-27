@@ -8,3 +8,4 @@ class Foto(Base):
     titulo = Column(String(100), index=True)
     imagem = Column(String(100), index=True)
     descricao = Column(String(100), unique=True, index=True)
+    caminhoImagem = Column(String(100), unique=True, index=True)
