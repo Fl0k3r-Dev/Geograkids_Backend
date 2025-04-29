@@ -14,7 +14,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Instala dependências
 RUN python -m venv $VIRTUAL_ENV && \
     pip install --upgrade pip && \
-    pip install -r app/requirements.txt
+    pip install -r requirements.txt
 
 # Expõe porta (ajuste se não for 8000)
 EXPOSE 8000
