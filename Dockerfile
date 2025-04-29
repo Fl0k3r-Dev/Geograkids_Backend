@@ -16,8 +16,8 @@ RUN python -m venv $VIRTUAL_ENV && \
     pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Expõe porta (ajuste se não for 8000)
-EXPOSE 8000
+# Expõe a porta correta (8080)
+EXPOSE 8080
 
-# Comando de inicialização
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Comando de inicialização corrigido
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
