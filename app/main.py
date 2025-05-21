@@ -1,3 +1,10 @@
+import hashlib
+from meus_pacotes.pydantic.main import BaseModel
+import sys
+
+from meus_pacotes.starlette.staticfiles import StaticFiles
+sys.path.insert(0, '/home/geografando1/public_html/meus_pacotes')
+from datetime import datetime, timedelta
 import os
 from fastapi import FastAPI, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -26,10 +33,15 @@ from app.schemas.fichas_atividades import FichasAtividadesSchema
 from app.schemas.fichas_conteudos import FichasConteudosSchema
 from app.schemas.cartografias import CartografiasSchema
 from typing import Optional
-from fastapi import File, UploadFile
+from fastapi import FastAPI, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
+from pydantic import BaseModel
+from datetime import datetime, timedelta
 
 import sys
-sys.path.insert(0, '/home/geografando1/public_html/meus_pacotes')
+
+from meus_pacotes.fastapi.security.oauth2 import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 app = FastAPI()
 
@@ -41,9 +53,63 @@ app.add_middleware(
     allow_headers=["*"],  # Permite todos os cabeçalhos
 )
 
+SECRET_KEY = "uma-chave-secreta-muito-forte"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_HOURS = 2
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class LoginData(BaseModel):
+    username: str
+    password: str
+
+def create_access_token(data: dict, expires_delta: timedelta):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+@app.post("/login", response_model=Token)
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)  # aqui injetamos a sessão do banco
+):
+    usuario = crud_usuario.get_by_username(db, form_data.username)
+    if not usuario or not comparar_md5(form_data.password, usuario.password):
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+
+    access_token = create_access_token(
+        data={"sub": form_data.username},
+        expires_delta=timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    )
+
+    return {"access_token": access_token, "token_type": "bearer"}
+
+def verify_token(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido ou expirado")
+
+@app.get("/protegido")
+def rota_protegida(usuario=Depends(verify_token)):
+    return {"message": f"Acesso autorizado para {usuario['sub']}"}
+
 @app.post("/usuario/")
 def criar_usuario(usuario: UsuarioSchema, db: Session = Depends(get_db)):
+    usuario.password = gerar_md5(usuario.password);
     return crud_usuario.create(db, usuario)
+
+def gerar_md5(texto: str) -> str:
+    return hashlib.md5(texto.encode()).hexdigest()
+
+def comparar_md5(texto: str, hash_md5: str) -> bool:
+    return gerar_md5(texto) == hash_md5
 
 @app.get("/usuario/")
 def listar_usuarios(db: Session = Depends(get_db)):
@@ -134,7 +200,7 @@ def atualizar_livros(
 
     caminho_pdf = None
     if pdf:
-        caminho_pdf = f"uploads/livros/{pdf.filename}-{titulo}"
+        caminho_pdf = f"uploads/livros/{titulo}-{pdf.filename}"
         os.makedirs(os.path.dirname(caminho_pdf), exist_ok=True)
         with open(caminho_pdf, "wb") as f:
             f.write(pdf.file.read())
@@ -161,7 +227,9 @@ def deletar_livros(livro_id: int, db: Session = Depends(get_db)):
 
     return crud_livro.delete(db, livro_id)
 
+os.makedirs("uploads", exist_ok=True)
 
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.post("/fotos/")
 def criar_fotos(
@@ -173,7 +241,7 @@ def criar_fotos(
     caminho_imagem = None
 
     if imagem:
-        caminho_imagem = f"uploads/fotos/{imagem.filename}-{titulo}"
+        caminho_imagem = f"uploads/fotos/{titulo}-{imagem.filename}"
         
         os.makedirs(os.path.dirname(caminho_imagem), exist_ok=True)
         
@@ -216,7 +284,7 @@ def atualizar_fotos(
 
     caminho_imagem = None
     if imagem:
-        caminho_imagem = f"uploads/fotos/{imagem.filename}-{titulo}"
+        caminho_imagem = f"uploads/fotos/{titulo}-{imagem.filename}"
         os.makedirs(os.path.dirname(caminho_imagem), exist_ok=True)
         with open(caminho_imagem, "wb") as f:
             f.write(imagem.file.read())
@@ -250,7 +318,7 @@ def criar_livro_vida(
     pdf: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    caminho_pdf = f"uploads/livrosvida/{pdf.filename}-{titulo}"
+    caminho_pdf = f"uploads/livrosvida/{titulo}-{pdf.filename}"
     
     os.makedirs(os.path.dirname(caminho_pdf), exist_ok=True)
     
@@ -284,7 +352,7 @@ def atualizar_livros_vida(
 ):
     caminho_pdf = None
     if pdf:
-        caminho_pdf = f"uploads/livrosvida/{pdf.filename}-{titulo}"
+        caminho_pdf = f"uploads/livrosvida/{titulo}-{pdf.filename}"
         os.makedirs(os.path.dirname(caminho_pdf), exist_ok=True)
         with open(caminho_pdf, "wb") as f:
             f.write(pdf.file.read())
@@ -320,7 +388,7 @@ def criar_videos(
     video: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    caminho_video = f"uploads/videos/{video.filename}-{titulo}"
+    caminho_video = f"uploads/videos/{titulo}-{video.filename}"
     
     os.makedirs(os.path.dirname(caminho_video), exist_ok=True)
     
@@ -363,7 +431,7 @@ def atualizar_videos(
 
     caminho_video = None
     if video:
-        caminho_video = f"uploads/videos/{video.filename}-{titulo}"
+        caminho_video = f"uploads/videos/{titulo}-{video.filename}"
         os.makedirs(os.path.dirname(caminho_video), exist_ok=True)
         with open(caminho_video, "wb") as f:
             f.write(video.file.read())
@@ -433,7 +501,7 @@ def atualizar_ficha_atividade(
 
     caminho_arquivo = None
     if pdf:
-        caminho_arquivo = f"uploads/fichasatividades/{pdf.filename}-{titulo}"
+        caminho_arquivo = f"uploads/fichasatividades/{titulo}-{pdf.filename}"
         os.makedirs(os.path.dirname(caminho_arquivo), exist_ok=True)
         with open(caminho_arquivo, "wb") as f:
             f.write(pdf.file.read())
@@ -477,7 +545,7 @@ def criar_ficha_conteudo(
     pdf: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    caminho_arquivo = f"uploads/fichasconteudos/{pdf.filename}-{titulo}"
+    caminho_arquivo = f"uploads/fichasconteudos/{titulo}-{pdf.filename}"
     
     os.makedirs(os.path.dirname(caminho_arquivo), exist_ok=True)
     
@@ -518,7 +586,7 @@ def atualizar_fichas_conteudos(
 
     caminho_arquivo = None
     if pdf:
-        caminho_arquivo = f"uploads/fichasconteudos/{pdf.filename}-{titulo}"
+        caminho_arquivo = f"uploads/fichasconteudos/{titulo}-{pdf.filename}"
         os.makedirs(os.path.dirname(caminho_arquivo), exist_ok=True)
         with open(caminho_arquivo, "wb") as f:
             f.write(pdf.file.read())
@@ -547,8 +615,14 @@ def deletar_ficha_conteudo(item_id: int, db: Session = Depends(get_db)):
 
 # CARTOGRAFIA
 @app.post("/cartografia/")
-def criar_cartografia(item: CartografiasSchema, db: Session = Depends(get_db)):
-    return crud_cartografia.create(db, item)
+def criar_cartografia(
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    link: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    item_dict = {"titulo": titulo, "descricao": descricao, "link": link}
+    return crud_cartografia.create(db, item_dict)
 
 @app.get("/cartografia/")
 def listar_cartografia(db: Session = Depends(get_db)):

@@ -1,7 +1,7 @@
 Iniciar projeto com uv (servidor interno da aplicação)
 
 venv\Scripts\activate => CASO O COMANDO ABAIXO NAO RODE
-uvicorn app.main:app --reload p => EXECUTA PROJETO
+uvicorn app.main:app --reload => EXECUTA PROJETO
 
 Para configurar o ambiente Python:
 

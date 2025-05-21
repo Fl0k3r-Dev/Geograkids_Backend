@@ -11,7 +11,10 @@ class CRUDBase(Generic[T]):
         self.model = model
 
     def create(self, db: Session, obj_in: BaseModel):
-        obj = self.model(**obj_in.dict())
+        if isinstance(obj_in, dict):
+            obj = self.model(**obj_in)
+        else:
+            obj = self.model(**obj_in.dict())
         db.add(obj)
         db.commit()
         db.refresh(obj)
@@ -25,6 +28,9 @@ class CRUDBase(Generic[T]):
         if not obj:
             raise HTTPException(status_code=404, detail="Objeto não encontrado")
         return obj
+    
+    def get_by_username(self, db: Session, username: str):
+        return db.query(self.model).filter(self.model.username == username).first()
 
     def update(self, db: Session, obj_id: int, obj_in: BaseModel):
         obj = db.query(self.model).filter(self.model.id == obj_id).first()
