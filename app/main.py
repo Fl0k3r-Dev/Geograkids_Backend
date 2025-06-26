@@ -1,5 +1,5 @@
 import hashlib
-from meus_pacotes.pydantic.main import BaseModel
+from pydantic import BaseModel
 import sys
 
 from meus_pacotes.starlette.staticfiles import StaticFiles
