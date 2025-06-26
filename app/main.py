@@ -2,7 +2,7 @@ import hashlib
 from pydantic import BaseModel
 import sys
 
-from meus_pacotes.starlette.staticfiles import StaticFiles
+from starlette.staticfiles import StaticFiles
 sys.path.insert(0, '/home/geografando1/public_html/meus_pacotes')
 from datetime import datetime, timedelta
 import os
@@ -41,7 +41,7 @@ from datetime import datetime, timedelta
 
 import sys
 
-from meus_pacotes.fastapi.security.oauth2 import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 app = FastAPI()
 
