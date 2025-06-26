@@ -2,7 +2,8 @@
 
 from __future__ import annotations as _annotations
 
-from pydantic_core import __version__ as __pydantic_core_version__
+import pydantic
+__pydantic_core_version__ = pydantic.VERSION
 
 __all__ = 'VERSION', 'version_info'
 

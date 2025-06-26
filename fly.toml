@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for geograkids-backend on 2025-04-29T05:45:08Z
+# fly.toml app configuration file generated for Geografando-backend on 2025-04-29T05:45:08Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'geograkids-backend'
+app = 'Geografando-backend'
 primary_region = 'gru'
 
 [build]

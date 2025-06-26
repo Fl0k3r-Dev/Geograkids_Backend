@@ -1,6 +1,6 @@
 Iniciar projeto com uv (servidor interno da aplicação)
 
-venv\Scripts\activate => CASO O COMANDO ABAIXO NAO RODE
+source venv/Scripts/activate => CASO O COMANDO ABAIXO NAO RODE, RODAR ESTE COM TERMINAL DO GIT BASH
 uvicorn app.main:app --reload => EXECUTA PROJETO
 
 Para configurar o ambiente Python:
