@@ -129,47 +129,20 @@ def deletar_usuario(usuario_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/referencias/")
-def criar_referencia(
-    titulo: str = Form(...),
-    autor: str = Form(...),
-    descricao: str = Form(...),
-    referencia: str = Form(...),
-    link: str = Form(...),
-    db: Session = Depends(get_db)
-):
-    # montar o schema
-    referencia_data = ReferenciaSchema(
-        titulo=titulo,
-        autor=autor,
-        descricao=descricao,
-        referencia=referencia,
-        link=link
-    )
-    return crud_referencia.create(db, referencia_data)
-
-
+def criar_referencia(referencia: ReferenciaSchema, db: Session = Depends(get_db)):
+    return crud_referencia.create(db, referencia)
+    
 @app.get("/referencias/")
 def listar_referencias(db: Session = Depends(get_db)):
     return crud_referencia.get_all(db)
-
+    
 @app.put("/referencias/{referencia_id}")
 def atualizar_referencia(
     referencia_id: int,
-    titulo: str = Form(...),
-    autor: str = Form(...),
-    descricao: str = Form(...),
-    referencia: str = Form(...),
-    link: str = Form(...),
+    referencia: ReferenciaSchema,
     db: Session = Depends(get_db)
 ):
-    referencia_data = ReferenciaSchema(
-        titulo=titulo,
-        autor=autor,
-        descricao=descricao,
-        referencia=referencia,
-        link=link
-    )
-    return crud_referencia.update(db, referencia_id, referencia_data)
+    return crud_referencia.update(db, referencia_id, referencia)
     
 @app.put("/referencias/{referencia_id}")
 def atualizar_referencias(referencia_id: int, referencia: ReferenciaSchema, db: Session = Depends(get_db)):
