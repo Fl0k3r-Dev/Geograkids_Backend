@@ -619,13 +619,8 @@ def deletar_ficha_conteudo(item_id: int, db: Session = Depends(get_db)):
 
 # CARTOGRAFIA
 @app.post("/cartografia/")
-def criar_cartografia(
-    titulo: str = Form(...),
-    descricao: str = Form(...),
-    link: str = Form(...),
-    db: Session = Depends(get_db)
-):
-    item_dict = {"titulo": titulo, "descricao": descricao, "link": link}
+def criar_cartografia(item: CartografiasSchema, db: Session = Depends(get_db)):
+    item_dict = item.dict()
     return crud_cartografia.create(db, item_dict)
 
 @app.get("/cartografia/")
