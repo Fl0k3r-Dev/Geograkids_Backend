@@ -3,6 +3,8 @@ from pydantic import BaseModel
 import sys
 
 from starlette.staticfiles import StaticFiles
+
+from app.schemas.categorias import CategoriaCreate, CategoriaDetail, CategoriaList, CategoriaUpdate, TipoCategoria
 sys.path.insert(0, '/home/geografando1/public_html/meus_pacotes')
 from datetime import datetime, timedelta
 import os
@@ -26,13 +28,14 @@ from app.crud.videos import crud_video
 from app.crud.fichas_atividades import crud_ficha_atividade
 from app.crud.fichas_conteudos import crud_ficha_conteudo
 from app.crud.cartografias import crud_cartografia
+from app.crud.categorias import crud_categoria
 from app.schemas.livro_vida import LivroVidaSchema
 from app.schemas.videos import VideosSchema
 from app.schemas.livro_vida import LivroVidaSchema
 from app.schemas.fichas_atividades import FichasAtividadesSchema
 from app.schemas.fichas_conteudos import FichasConteudosSchema
 from app.schemas.cartografias import CartografiasSchema
-from typing import Optional
+from typing import Optional, List
 from fastapi import FastAPI, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from jose import JWTError, jwt
@@ -42,6 +45,9 @@ from datetime import datetime, timedelta
 import sys
 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
+import bleach
+from pathlib import Path
 
 app = FastAPI()
 
@@ -638,3 +644,189 @@ def atualizar_cartografia(item_id: int, item: CartografiasSchema, db: Session = 
 @app.delete("/cartografia/{item_id}")
 def deletar_cartografia(item_id: int, db: Session = Depends(get_db)):
     return crud_cartografia.delete(db, item_id)
+
+# Configurar diretório de uploads
+UPLOAD_DIR = Path("uploads/categorias")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# Validadores de arquivo
+def validate_pdf(file: UploadFile) -> bool:
+    return file.content_type == "application/pdf" and file.size <= 50 * 1024 * 1024  # 50MB
+
+def validate_slides(file: UploadFile) -> bool:
+    valid_types = ["application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]
+    return file.content_type in valid_types and file.size <= 50 * 1024 * 1024  # 50MB
+
+def validate_video(file: UploadFile) -> bool:
+    valid_types = ["video/mp4", "video/mpeg", "video/quicktime", "video/x-msvideo"]
+    return file.content_type in valid_types and file.size <= 100 * 1024 * 1024  # 100MB
+
+def validate_image(file: UploadFile) -> bool:
+    valid_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+    return file.content_type in valid_types and file.size <= 10 * 1024 * 1024  # 10MB
+
+# Endpoints de Categorias
+@app.get("/categorias", response_model=List[CategoriaList])
+def list_categorias(
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = 100
+):
+    """
+    Lista todas as categorias com informações básicas.
+    """
+    items = crud_categoria.get_multi(db, skip=skip, limit=limit)
+    return [
+        {
+            "id": item.id,
+            "titulo": item.titulo,
+            "descricao": item.descricao,
+            "tipo": item.tipo,
+            "tem_texto": bool(item.texto),
+            "tem_pdf": bool(item.pdf_path),
+            "tem_slides": bool(item.slides_path),
+            "tem_video": bool(item.video_path),
+            "tem_foto": bool(item.foto_path)
+        }
+        for item in items
+    ]
+
+@app.get("/categorias/{categoria_id}", response_model=CategoriaDetail)
+def get_categoria(
+    categoria_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna uma categoria específica com todos os detalhes.
+    """
+    db_categoria = crud_categoria.get(db, id=categoria_id)
+    if not db_categoria:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+
+    # Gerar URLs para os arquivos
+    base_url = "/uploads/categorias/"
+    return {
+        "id": db_categoria.id,
+        "titulo": db_categoria.titulo,
+        "descricao": db_categoria.descricao,
+        "tipo": db_categoria.tipo,
+        "texto": db_categoria.texto,
+        "pdf_url": f"{base_url}{os.path.basename(db_categoria.pdf_path)}" if db_categoria.pdf_path else None,
+        "slides_url": f"{base_url}{os.path.basename(db_categoria.slides_path)}" if db_categoria.slides_path else None,
+        "video_url": f"{base_url}{os.path.basename(db_categoria.video_path)}" if db_categoria.video_path else None,
+        "foto_url": f"{base_url}{os.path.basename(db_categoria.foto_path)}" if db_categoria.foto_path else None
+    }
+
+@app.post("/categorias", response_model=CategoriaDetail)
+async def create_categoria(
+    titulo: str = Form(...),
+    descricao: str = Form(...),
+    tipo: TipoCategoria = Form(...),
+    texto: Optional[str] = Form(None),
+    pdf_file: Optional[UploadFile] = File(None),
+    slides_file: Optional[UploadFile] = File(None),
+    video_file: Optional[UploadFile] = File(None),
+    foto_file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Cria uma nova categoria com arquivos opcionais.
+    """
+    # Validar arquivos
+    if pdf_file and not validate_pdf(pdf_file):
+        raise HTTPException(status_code=400, detail="Arquivo PDF inválido ou muito grande")
+    if slides_file and not validate_slides(slides_file):
+        raise HTTPException(status_code=400, detail="Arquivo de slides inválido ou muito grande")
+    if video_file and not validate_video(video_file):
+        raise HTTPException(status_code=400, detail="Arquivo de vídeo inválido ou muito grande")
+    if foto_file and not validate_image(foto_file):
+        raise HTTPException(status_code=400, detail="Arquivo de imagem inválido ou muito grande")
+
+    # Sanitizar texto HTML
+    if texto:
+        texto = bleach.clean(texto, tags=['p', 'b', 'i', 'u', 'strong', 'em', 'h1', 'h2', 'h3', 'br', 'ul', 'ol', 'li'])
+
+    # Criar categoria
+    categoria_in = CategoriaCreate(
+        titulo=titulo,
+        descricao=descricao,
+        tipo=tipo,
+        texto=texto
+    )
+
+    db_categoria = crud_categoria.create_with_files(
+        db=db,
+        obj_in=categoria_in,
+        pdf_file=pdf_file,
+        slides_file=slides_file,
+        video_file=video_file,
+        foto_file=foto_file
+    )
+
+    return get_categoria(db_categoria.id, db)
+
+@app.put("/categorias/{categoria_id}", response_model=CategoriaDetail)
+async def update_categoria(
+    categoria_id: int,
+    titulo: Optional[str] = Form(None),
+    descricao: Optional[str] = Form(None),
+    tipo: Optional[TipoCategoria] = Form(None),
+    texto: Optional[str] = Form(None),
+    pdf_file: Optional[UploadFile] = File(None),
+    slides_file: Optional[UploadFile] = File(None),
+    video_file: Optional[UploadFile] = File(None),
+    foto_file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Atualiza uma categoria existente.
+    """
+    db_categoria = crud_categoria.get(db, id=categoria_id)
+    if not db_categoria:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada")
+
+    # Validar arquivos
+    if pdf_file and not validate_pdf(pdf_file):
+        raise HTTPException(status_code=400, detail="Arquivo PDF inválido ou muito grande")
+    if slides_file and not validate_slides(slides_file):
+        raise HTTPException(status_code=400, detail="Arquivo de slides inválido ou muito grande")
+    if video_file and not validate_video(video_file):
+        raise HTTPException(status_code=400, detail="Arquivo de vídeo inválido ou muito grande")
+    if foto_file and not validate_image(foto_file):
+        raise HTTPException(status_code=400, detail="Arquivo de imagem inválido ou muito grande")
+
+    # Sanitizar texto HTML
+    if texto:
+        texto = bleach.clean(texto, tags=['p', 'b', 'i', 'u', 'strong', 'em', 'h1', 'h2', 'h3', 'br', 'ul', 'ol', 'li'])
+
+    # Criar objeto de atualização
+    categoria_in = CategoriaUpdate(
+        titulo=titulo,
+        descricao=descricao,
+        tipo=tipo,
+        texto=texto
+    )
+
+    db_categoria = crud_categoria.update_with_files(
+        db=db,
+        db_obj=db_categoria,
+        obj_in=categoria_in,
+        pdf_file=pdf_file,
+        slides_file=slides_file,
+        video_file=video_file,
+        foto_file=foto_file
+    )
+
+    return get_categoria(db_categoria.id, db)
+
+@app.delete("/categorias/{categoria_id}")
+def delete_categoria(
+    categoria_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Remove uma categoria e seus arquivos associados.
+    """
+    crud_categoria.remove(db=db, id=categoria_id)
+    return {"message": "Categoria removida com sucesso"}
