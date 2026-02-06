@@ -1,7 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel
 
-class FotoSchema(BaseModel, from_attributes=True):
+class FotoSchema(BaseModel):
     titulo: str
     imagem: str
     descricao: str

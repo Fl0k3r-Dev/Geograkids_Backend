@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-class CartografiasSchema(BaseModel, from_attributes=True):
+class CartografiasSchema(BaseModel):
     titulo: str
     descricao: str
     link: str

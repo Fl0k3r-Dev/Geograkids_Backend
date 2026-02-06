@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-class ReferenciaSchema(BaseModel, from_attributes=True):
+class ReferenciaSchema(BaseModel):
     titulo: str
     autor: str
     descricao: str 

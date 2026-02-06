@@ -1,4 +1,4 @@
-#!/home/ranzi/Documentos/Projetos/Backends/Python/Mestrado/.venv/bin/python3
+#!/home/ranzi/Documents/Projetos/Geograkids_Backend/.venv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys
